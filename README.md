@@ -119,6 +119,13 @@ Environment variables (optional) should be defined with `NEXT_PUBLIC_` prefixes,
 - `test/EncryptedRandomSelectorSepolia.ts` – skipped by default; executes against a live FHEVM network once deployed.
 - Frontend relies on manual QA through the integrated dashboards (encrypted counts, decryption flow, rainbow wallet).
 
+## Contributors
+
+This project is collaboratively developed by:
+
+- **UI Developer**: wswsyy (shiyu689@qq.com) - Frontend development and user experience
+- **Smart Contract Developer**: wawsyy (shiyu689@qq.com) - Blockchain contracts and cryptography
+
 ## License
 
 Distributed under the [BSD-3-Clause-Clear License](LICENSE).
