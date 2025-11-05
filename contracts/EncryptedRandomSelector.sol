@@ -56,6 +56,10 @@ contract EncryptedRandomSelector is SepoliaConfig, Ownable {
     /// @param winnerIdentifier Clear winner identifier (application-specific meaning).
     event SelectionDecrypted(address indexed requester, uint32 indexed winnerIdentifier);
 
+    /// @notice Emitted when the round is reset and candidate list is cleared.
+    /// @param previousCandidateCount Number of candidates that were cleared.
+    event RoundReset(uint256 indexed previousCandidateCount);
+
     error NoCandidates();
     error SelectionPending();
     error DecryptionNotReady();
@@ -202,6 +206,8 @@ contract EncryptedRandomSelector is SepoliaConfig, Ownable {
 
     /// @notice Clear the candidate list, intended for new rounds.
     function resetRound() external onlyOwner {
+        uint256 previousCount = _candidates.length;
+
         for (uint256 i = 0; i < _candidates.length; ++i) {
             address submitter = _candidates[i].submitter;
             if (submissionsByAddress[submitter] > 0) {
@@ -213,5 +219,7 @@ contract EncryptedRandomSelector is SepoliaConfig, Ownable {
         hasSelection = false;
         decryptionPending = false;
         latestDecryptionRequestId = 0;
+
+        emit RoundReset(previousCount);
     }
 }
