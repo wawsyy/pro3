@@ -114,4 +114,25 @@ describe("EncryptedRandomSelector", function () {
 
     expect(await contract.candidateCount()).to.equal(1);
   });
+
+  it("Should emit RoundReset event when round is reset", async function () {
+    const { contract, signers } = await loadFixture(deployEncryptedRandomSelectorFixture);
+    const contractAddress = await contract.getAddress();
+
+    // Add some candidates
+    const encryptedAlice = await encrypt32(contractAddress, signers.alice, 42);
+    const encryptedBob = await encrypt32(contractAddress, signers.bob, 88);
+
+    await contract.connect(signers.alice).submitCandidate(encryptedAlice.handles[0], encryptedAlice.inputProof);
+    await contract.connect(signers.bob).submitCandidate(encryptedBob.handles[0], encryptedBob.inputProof);
+
+    expect(await contract.candidateCount()).to.equal(2);
+
+    // Reset round and verify event
+    await expect(contract.connect(signers.deployer).resetRound())
+      .to.emit(contract, "RoundReset")
+      .withArgs(2);
+
+    expect(await contract.candidateCount()).to.equal(0);
+  });
 });
