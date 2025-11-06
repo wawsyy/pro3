@@ -50,6 +50,14 @@ export default {
           "4": "hsl(var(--chart-4))",
           "5": "hsl(var(--chart-5))",
         },
+        // FHEVM theme colors
+        fhe: {
+          primary: "#3b82f6",    // Blue for encryption
+          secondary: "#8b5cf6",  // Purple for privacy
+          accent: "#06b6d4",     // Cyan for computation
+          success: "#10b981",    // Green for decryption
+          warning: "#f59e0b",    // Amber for pending
+        },
       },
       backgroundImage: {
         noise: "url('/noise.svg')",
