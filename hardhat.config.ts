@@ -63,6 +63,9 @@ const config: HardhatUserConfig = {
       accounts: sepoliaAccounts,
       chainId: 11155111,
       url: `https://sepolia.infura.io/v3/${INFURA_API_KEY}`,
+      // FHEVM Sepolia specific configuration
+      gasPrice: 20_000_000_000, // 20 gwei for FHE operations
+      timeout: 120000, // Extended timeout for FHE computations
     },
   },
   paths: {
