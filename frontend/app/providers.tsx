@@ -29,12 +29,7 @@ const transports = {
 };
 
 const wagmiConfig = createConfig({
-  autoConnect: true,
-  connectors: [
-    metaMask({
-      shimDisconnect: true,
-    }),
-  ],
+  connectors: [metaMask()],
   chains: supportedChains,
   transports,
   ssr: true,

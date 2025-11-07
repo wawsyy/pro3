@@ -21,6 +21,10 @@ const NETWORKS: NetworkEntry[] = [
   { id: HARDHAT_CHAIN_ID, label: "Hardhat", badgeVariant: "warning" },
 ];
 
+type EthereumProvider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
+
 function formatAddress(address?: string | null) {
   if (!address) return "";
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -29,8 +33,8 @@ function formatAddress(address?: string | null) {
 export function TopNav() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { connectAsync, connectors, isLoading, pendingConnector } = useConnect();
-  const { disconnect, isLoading: isDisconnecting } = useDisconnect();
+  const { connectAsync, connectors, status: connectStatus } = useConnect();
+  const { disconnect, status: disconnectStatus } = useDisconnect();
   const { selectedChainId, selectChain } = useNetworkPreference();
   const [networkModalOpen, setNetworkModalOpen] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
@@ -52,7 +56,13 @@ export function TopNav() {
   };
 
   const ensureNetwork = async (targetChainId: number) => {
-    if (!window.ethereum) return;
+    const ethereum =
+      typeof window !== "undefined"
+        ? (window as typeof window & { ethereum?: EthereumProvider }).ethereum
+        : undefined;
+    if (!ethereum) {
+      return;
+    }
     const chainParams =
       targetChainId === HARDHAT_CHAIN_ID
         ? {
@@ -74,18 +84,19 @@ export function TopNav() {
 
     try {
       setIsSwitching(true);
-      await window.ethereum.request({
+      await ethereum.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: chainParams.chainId }],
       });
-    } catch (error: any) {
+    } catch (unknownError: unknown) {
+      const error = unknownError as { code?: number };
       if (error?.code === 4902) {
-        await window.ethereum.request({
+        await ethereum.request({
           method: "wallet_addEthereumChain",
           params: [chainParams],
         });
       } else {
-        throw error;
+        throw unknownError;
       }
     } finally {
       setIsSwitching(false);
@@ -134,21 +145,19 @@ export function TopNav() {
             </span>
             <button
               onClick={() => disconnect()}
-              disabled={isDisconnecting}
+              disabled={disconnectStatus === "pending"}
               className="rounded-full border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-red-500 hover:text-red-400 disabled:opacity-60"
             >
-              {isDisconnecting ? "Disconnecting" : "Disconnect"}
+              {disconnectStatus === "pending" ? "Disconnecting" : "Disconnect"}
             </button>
           </div>
         ) : (
           <button
             onClick={handleConnect}
-            disabled={!metaMaskConnector || isLoading}
+            disabled={!metaMaskConnector || connectStatus === "pending"}
             className="rounded-full bg-sky-500 px-5 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-300"
           >
-            {isLoading && pendingConnector?.id === metaMaskConnector?.id
-              ? "Connecting..."
-              : "Connect MetaMask"}
+            {connectStatus === "pending" ? "Connecting..." : "Connect MetaMask"}
           </button>
         )}
       </div>

@@ -24,12 +24,59 @@ const SEPOLIA_RPC =
   process.env.NEXT_PUBLIC_SEPOLIA_RPC ??
   "https://ethereum-sepolia.publicnode.com";
 
-// Enhanced RPC configuration for better network reliability
-const RPC_TIMEOUT = 30000; // 30 seconds timeout
-
 const FALLBACK_RPCS: Record<number, string> = {
   [DEFAULT_CHAIN_ID]: LOCAL_RPC,
   11155111: process.env.NEXT_PUBLIC_INFURA_SEPOLIA ?? SEPOLIA_RPC,
+};
+
+type StructuredError = {
+  code?: string | number;
+  message?: string;
+  shortMessage?: string;
+  data?: unknown;
+  error?: StructuredError;
+  name?: string;
+};
+
+const toStructuredError = (error: unknown): StructuredError => {
+  if (typeof error === "object" && error !== null) {
+    return error as StructuredError;
+  }
+  return { message: String(error) };
+};
+
+const extractRevertData = (error: StructuredError): string | undefined => {
+  const candidates = [error.data, error.error?.data];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string") {
+      return candidate;
+    }
+  }
+  return undefined;
+};
+
+const didUserReject = (error: StructuredError): boolean => {
+  const candidates = [error.code, error.error?.code];
+  return candidates.some(
+    (code) => code === "ACTION_REJECTED" || code === 4001,
+  );
+};
+
+const resolveMessage = (error: StructuredError): string => {
+  const candidates = [
+    error.message,
+    error.shortMessage,
+    error.error?.message,
+    error.error?.shortMessage,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.length > 0) {
+      return candidate;
+    }
+  }
+
+  return "";
 };
 
 function getContractByChainId(chainId: number | undefined): ContractInfo {
@@ -84,7 +131,7 @@ export function EncryptedRandomSelectorDashboard() {
   const [provider, setProvider] = useState<ethers.Eip1193Provider>();
   const [signer, setSigner] = useState<ethers.JsonRpcSigner>();
   const [readonlyProvider, setReadonlyProvider] =
-    useState<ethers.ContractRunner>();
+    useState<ethers.JsonRpcProvider>();
 
   const [candidateCount, setCandidateCount] = useState<number>(0);
   const [owner, setOwner] = useState<string>();
@@ -181,17 +228,6 @@ export function EncryptedRandomSelectorDashboard() {
       disposed = true;
     };
   }, [provider, effectiveChainId]);
-
-  const contract = useMemo(() => {
-    if (!contractInfo.address || !readonlyProvider) {
-      return undefined;
-    }
-    return new ethers.Contract(
-      contractInfo.address,
-      contractInfo.abi,
-      readonlyProvider,
-    );
-  }, [contractInfo.address, contractInfo.abi, readonlyProvider]);
 
   const {
     instance: fhevmInstance,
@@ -322,16 +358,27 @@ export function EncryptedRandomSelectorDashboard() {
       }
 
       setActionMessage("");
-    } catch (error: any) {
+    } catch (unknownError: unknown) {
+      const error = toStructuredError(unknownError);
       console.error("Failed to refresh selector summary", error);
-      
+
+      const nestedError = error.error;
+      const errorCode = error.code ?? nestedError?.code;
+      const messageText =
+        (typeof error.message === "string" && error.message) ||
+        (typeof nestedError?.message === "string" && nestedError.message) ||
+        "";
+
       // Handle network change error gracefully
-      if (error?.code === "NETWORK_ERROR" && error?.message?.includes("network changed")) {
+      if (
+        errorCode === "NETWORK_ERROR" &&
+        messageText.toLowerCase().includes("network changed")
+      ) {
         console.log("Network change detected, will retry on next refresh");
         setActionMessage("Network is switching, please wait...");
       } else {
         setActionMessage(
-          "Unable to read contract state. Confirm the selected network and deployment address are correct."
+          "Unable to read contract state. Confirm the selected network and deployment address are correct.",
         );
       }
     } finally {
@@ -395,18 +442,15 @@ export function EncryptedRandomSelectorDashboard() {
       setParticipantForm({ fullName: "", referenceId: "" });
       setActionMessage("Participant enrolled successfully.");
       await refreshSummary();
-    } catch (error: any) {
+    } catch (unknownError: unknown) {
+      const error = toStructuredError(unknownError);
       console.error("Failed to submit candidate", error);
-      let friendlyMessage = error?.message || error?.shortMessage || String(error);
-      const revertData: string | undefined = error?.data || error?.error?.data;
-      if (
-        error?.code === "ACTION_REJECTED" ||
-        error?.code === 4001 ||
-        error?.error?.code === 4001
-      ) {
+      let friendlyMessage = resolveMessage(error) || String(unknownError);
+      const revertData = extractRevertData(error);
+      if (didUserReject(error)) {
         friendlyMessage = "Transaction was cancelled in MetaMask.";
       } else if (
-        (error?.code === "CALL_EXCEPTION" || error?.name === "CallException") &&
+        (error.code === "CALL_EXCEPTION" || error.name === "CallException") &&
         typeof revertData === "string" &&
         revertData.toLowerCase().startsWith("0x9fbfc589")
       ) {
@@ -470,13 +514,10 @@ export function EncryptedRandomSelectorDashboard() {
 
       setActionMessage("Selection completed. Awaiting decryption.");
       await refreshSummary();
-    } catch (error: any) {
+    } catch (unknownError: unknown) {
+      const error = toStructuredError(unknownError);
       console.error("executeSelection failed", error);
-      if (
-        error?.code === "ACTION_REJECTED" ||
-        error?.code === 4001 ||
-        error?.error?.code === 4001
-      ) {
+      if (didUserReject(error)) {
         setActionMessage("Selection transaction was cancelled in MetaMask.");
       } else {
         setActionMessage(
@@ -519,22 +560,22 @@ export function EncryptedRandomSelectorDashboard() {
         "Decryption request sent. Oracle will fulfill asynchronously.",
       );
       await refreshSummary();
-    } catch (error: any) {
+    } catch (unknownError: unknown) {
+      const error = toStructuredError(unknownError);
       console.error("requestWinnerDecryption failed", error);
       let friendlyMessage =
-        error?.message || error?.shortMessage || "Request could not be completed.";
-      const revertData: string | undefined = error?.data || error?.error?.data;
-      if (
-        error?.code === "ACTION_REJECTED" ||
-        error?.code === 4001 ||
-        error?.error?.code === 4001
-      ) {
+        resolveMessage(error) || "Request could not be completed.";
+      const revertData = extractRevertData(error);
+      if (didUserReject(error)) {
         friendlyMessage = "Request was cancelled in MetaMask.";
-      } else if (typeof friendlyMessage === "string" && friendlyMessage.includes("Failed to fetch")) {
+      } else if (
+        typeof friendlyMessage === "string" &&
+        friendlyMessage.includes("Failed to fetch")
+      ) {
         friendlyMessage =
           "Network request to the FHE oracle failed. Check your internet connection or RPC endpoint.";
       } else if (
-        (error?.code === "CALL_EXCEPTION" || error?.name === "CallException") &&
+        (error.code === "CALL_EXCEPTION" || error.name === "CallException") &&
         typeof revertData === "string"
       ) {
         const lowered = revertData.toLowerCase();
